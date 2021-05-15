@@ -9,6 +9,9 @@
 #include <RF24.h>
 #include <printf.h> // Required for "radio.printDetails();"
 
+#include "Keyboard.h"
+#include "Mouse.h"
+
 //nRF24L01
 #define CE 7
 #define CSN 8
@@ -17,6 +20,10 @@ RF24 radio(CE, CSN);
 const byte address[6] = "00001";
 unsigned long lastReceiveTime = 0;
 unsigned long currentTime = 0;
+
+int leftClickTime;
+int rightClickTime;
+int b4Time;
 
 /**
    NRF24L01 buffer limit 32 bytes
@@ -70,6 +77,10 @@ void setup() {
   radio.printDetails();
 
   defaultData();
+
+  // initialize mouse control:
+  Mouse.begin();
+  Keyboard.begin();
 }
 void loop() {
 
@@ -134,19 +145,95 @@ void loop() {
   Serial.print(" ; B4: ");
   Serial.print(data.b4d);
 
-  Serial.println();
-
   currentTime = millis();
   /**
-    Lost connection
-  */
-  if ( currentTime - lastReceiveTime > 1000 ) { // If current time is more then 1 second since we have recived the last data, that means we have lost connection
+   * Lost connection
+   */
+  if ( currentTime - lastReceiveTime > 1000 ) {
     /**
        Either use the default data or adjust to some safe values based on your device
     */
     defaultData();
   }
 
+  Serial.println();
+
+  /**
+     Activate the mouse
+  */
+  if (data.s2d == 0) {
+    mouseControl();
+    keyboardControl();
+  }
+
+}
+
+
+
+/**
+   Mouse Move
+*/
+void mouseControl() {
+  currentTime = millis();
+
+  // Mouse Move
+  int mouseX = (data.j2dX - 127) / data.p1d;
+  int mouseY = (data.j2dY - 126) / data.p1d;
+  Mouse.move(mouseX, mouseY, 0);
+
+  if (data.j1dB == 0) {
+    if ((currentTime - leftClickTime > 200) or leftClickTime == 0 ) {
+      // Mouse Left Click
+      Mouse.click(MOUSE_LEFT);
+      Mouse.release();
+      leftClickTime = currentTime;
+    }
+  }
+
+  if (data.j2dB == 0) {
+    if ((currentTime - rightClickTime > 200) or rightClickTime == 0 ) {
+      // Mouse Right Click
+      Mouse.click(MOUSE_RIGHT);
+      Mouse.release();
+      rightClickTime = currentTime;
+    }
+  }
+}
+
+/**
+   Keyboard Control
+*/
+void keyboardControl() {
+  currentTime = millis();
+
+  // UP
+  if (data.j1dY < 100) {
+    Keyboard.press('w');
+  }
+  // Down
+  else if (data.j1dY > 150) {
+    Keyboard.press('s');
+  }
+  // Left
+  else if (data.j1dX < 100) {
+    Keyboard.press('a');
+  }
+  // Right
+  else if (data.j1dX > 150) {
+    Keyboard.press('d');
+  }
+  else {
+    Keyboard.releaseAll();
+  }
+
+  // Keyboard Press Space
+  if ((currentTime - b4Time > 200) or b4Time == 0 ) {
+    if (data.b4d == 0) {
+      Keyboard.press(' ');
+      Keyboard.releaseAll();
+      b4Time = currentTime;
+    }
+  }
 }
 
 /**
@@ -169,4 +256,7 @@ void defaultData() {
   data.b4d = 1;
   data.IMUx = 127;
   data.IMUy = 127;
+  leftClickTime = 0;
+  rightClickTime = 0;
+  b4Time = 0;
 }
